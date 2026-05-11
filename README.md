@@ -6,7 +6,7 @@ The app uses the YouTube Data API v3 to:
 
 - Authenticate with a Google account
 - Create a playlist
-- Search YouTube for each track
+- Search YouTube for tracks that do not already include a YouTube URL or video ID
 - Add the matched videos to the playlist
 
 ## Project Structure
@@ -71,6 +71,8 @@ Paste one track per line.
 ```text
 1. The Weeknd - Blinding Lights
 The Weeknd, Save Your Tears
+The Weeknd - After Hours | https://youtu.be/example1234
+https://www.youtube.com/watch?v=example1234
 After Hours
 ```
 
@@ -81,10 +83,26 @@ The parser currently supports:
 - `Artist - Song`
 - `Artist, Song`
 - `Artist | Song`
+- `Artist - Song | YouTube URL`
+- Standalone YouTube URLs
+- Standalone YouTube video IDs
 - Plain song titles
 - `.txt`, `.csv`, `.tsv`, `.md`, and text-like uploads
 
 Plain song titles are searched as-is. Artist/title formats produce better search queries.
+
+Rows that include a YouTube URL or video ID skip `search.list` and use that video directly. This works the same way for pasted text and uploaded files.
+
+Supported URL examples:
+
+```text
+https://www.youtube.com/watch?v=VIDEO_ID
+https://music.youtube.com/watch?v=VIDEO_ID
+https://youtu.be/VIDEO_ID
+https://www.youtube.com/shorts/VIDEO_ID
+Artist - Song | https://youtu.be/VIDEO_ID
+Artist, Song, https://www.youtube.com/watch?v=VIDEO_ID
+```
 
 ## API Quota Usage
 
@@ -110,12 +128,20 @@ Total                            = 5450
 
 That is about 54.5% of a 10,000-unit daily quota.
 
+For a 36-track playlist where every row already has a YouTube URL or video ID:
+
+```text
+Create playlist:        1 * 50   =   50
+Search 36 tracks:       0 * 100  =    0
+Add 36 videos:         36 * 50   = 1800
+----------------------------------------
+Total                            = 1850
+```
+
 ## Quota Reduction Ideas
 
-The current app searches every parsed track, which is expensive. Good next improvements:
+The app already skips search for rows that include a YouTube URL or video ID. Good next improvements:
 
-- Support direct YouTube URLs and video IDs in the track input
-- Skip `search.list` when a video ID is already available
 - Cache search results in `localStorage`
 - Add a resolve/preview step before creating the playlist
 

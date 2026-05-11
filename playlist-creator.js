@@ -32,6 +32,51 @@ function stripNumbering(line) {
     .trim();
 }
 
+function extractYouTubeVideoId(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+
+  if (/^[a-zA-Z0-9_-]{11}$/.test(text)) {
+    return text;
+  }
+
+  const urlMatch = text.match(/https?:\/\/[^\s,|]+/);
+  if (!urlMatch) return null;
+
+  try {
+    const url = new URL(urlMatch[0]);
+    const host = url.hostname.replace(/^www\./, '');
+
+    if (host === 'youtu.be') {
+      return url.pathname.split('/').filter(Boolean)[0] || null;
+    }
+
+    if (host === 'youtube.com' || host === 'music.youtube.com' || host.endsWith('.youtube.com')) {
+      if (url.searchParams.has('v')) {
+        return url.searchParams.get('v');
+      }
+
+      const parts = url.pathname.split('/').filter(Boolean);
+      const idPrefixes = new Set(['embed', 'shorts', 'live']);
+      if (idPrefixes.has(parts[0]) && parts[1]) {
+        return parts[1];
+      }
+    }
+  } catch (e) {
+    return null;
+  }
+
+  return null;
+}
+
+function removeVideoReference(value, videoId) {
+  return String(value)
+    .replace(/https?:\/\/[^\s,|]+/g, '')
+    .replace(new RegExp(`\\b${videoId}\\b`, 'g'), '')
+    .replace(/[|,;\-–—\s]+$/, '')
+    .trim();
+}
+
 function parseCsvLine(line) {
   const values = [];
   let current = '';
@@ -62,32 +107,51 @@ function parseTrackLine(line) {
   const clean = stripNumbering(line);
   if (!clean) return null;
 
-  const csvValues = parseCsvLine(clean);
+  const videoId = extractYouTubeVideoId(clean);
+  const textWithoutVideo = videoId ? removeVideoReference(clean, videoId) : clean;
+
+  if (videoId && !textWithoutVideo) {
+    return {
+      artist: '',
+      title: videoId,
+      display: `YouTube video ${videoId}`,
+      videoId
+    };
+  }
+
+  const csvValues = parseCsvLine(textWithoutVideo);
   if (csvValues.length >= 2 && csvValues[0] && csvValues[1]) {
     const title = csvValues.slice(1).join(' ').trim();
     return {
       artist: csvValues[0],
       title,
-      display: `${csvValues[0]} - ${title}`
+      display: `${csvValues[0]} - ${title}`,
+      videoId
     };
   }
 
   const separators = [' - ', ' – ', ' — ', ' | ', '\t'];
   for (const sep of separators) {
-    if (clean.includes(sep)) {
-      const [artist, ...titleParts] = clean.split(sep);
+    if (textWithoutVideo.includes(sep)) {
+      const [artist, ...titleParts] = textWithoutVideo.split(sep);
       const title = titleParts.join(sep).trim();
       if (artist.trim() && title) {
         return {
           artist: artist.trim(),
           title,
-          display: `${artist.trim()} - ${title}`
+          display: `${artist.trim()} - ${title}`,
+          videoId
         };
       }
     }
   }
 
-  return { artist: '', title: clean, display: clean };
+  return {
+    artist: '',
+    title: textWithoutVideo,
+    display: textWithoutVideo,
+    videoId
+  };
 }
 
 function parseTracks(raw) {
@@ -133,8 +197,8 @@ function renderSongs() {
     let cls = '', label = '';
     if (st === 'ok') { cls = 'matched'; label = `<span class="song-status status-ok">added</span>`; }
     else if (st === 'err') { cls = 'failed'; label = `<span class="song-status status-err">not found</span>`; }
-    else if (st === 'loading') { label = `<span class="song-status status-loading">searching…</span>`; }
-    else { label = `<span class="song-status status-pending">—</span>`; }
+    else if (st === 'loading') { label = `<span class="song-status status-loading">${track.videoId ? 'adding…' : 'searching…'}</span>`; }
+    else { label = `<span class="song-status status-pending">${track.videoId ? 'url' : '—'}</span>`; }
     return `<div class="song-item ${cls}">
       <span class="song-num">${String(i + 1).padStart(2, '0')}</span>
       <span class="song-name">${escapeHtml(track.display)}</span>
@@ -269,7 +333,7 @@ async function createPlaylist() {
       renderSongs();
 
       try {
-        const videoId = await searchVideo(tracks[i]);
+        const videoId = tracks[i].videoId || await searchVideo(tracks[i]);
         if (!videoId) throw new Error('no results');
 
         videoIds[i] = videoId;
