@@ -24,10 +24,22 @@ The app uses the YouTube Data API v3 to:
 
 ## Requirements
 
+- A modern browser with JavaScript enabled
+- Node.js 18 or newer for running unit tests
+- npm for running the test script
 - A Google Cloud project
 - YouTube Data API v3 enabled
 - A YouTube Data API key
 - An OAuth 2.0 Client ID for a Web application
+
+## Tech Stack
+
+- HTML
+- CSS
+- JavaScript
+- Node.js built-in test runner for offline unit tests
+
+No frontend framework, bundler, or runtime server is required for the app itself. A local static server is recommended for OAuth setup.
 
 ## Google Setup
 
@@ -76,6 +88,21 @@ npm test
 ```
 
 The tests use Node's built-in test runner and live in `tests/`. They cover track parsing, CSV-style input, YouTube URL/video ID extraction, blank-line handling, and edge cases. They do not call Google OAuth, YouTube APIs, `fetch`, or the DOM, so they do not require credentials or consume quota.
+
+## CI
+
+GitHub Actions runs the offline test suite on pull requests and pushes to `main`.
+
+The workflow runs:
+
+```bash
+npm test
+node --check playlist-creator.js
+node --check track-parser.js
+node --check tests/track-parser.test.js
+```
+
+The CI job does not require API keys, OAuth credentials, or YouTube quota.
 
 ## Supported Track Formats
 
