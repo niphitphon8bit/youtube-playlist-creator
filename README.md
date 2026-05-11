@@ -15,7 +15,10 @@ The app uses the YouTube Data API v3 to:
 .
 ├── yt-playlist-creator.html  # App markup
 ├── styles.css                # UI styling
-├── playlist-creator.js       # Track parsing, auth, YouTube API calls
+├── track-parser.js           # Pure track parsing utilities
+├── playlist-creator.js       # Browser UI, auth, YouTube API calls
+├── tests/                    # Offline unit tests
+├── package.json              # Test script
 └── README.md
 ```
 
@@ -63,6 +66,16 @@ Add `http://localhost:8000` as an authorized JavaScript origin in your OAuth cli
 6. Paste tracks into the track list or upload a text-like file.
 7. Click **Load Tracks**.
 8. Click **Create Playlist**.
+
+## Tests
+
+Run the offline unit tests with:
+
+```bash
+npm test
+```
+
+The tests use Node's built-in test runner and live in `tests/`. They cover track parsing, CSV-style input, YouTube URL/video ID extraction, blank-line handling, and edge cases. They do not call Google OAuth, YouTube APIs, `fetch`, or the DOM, so they do not require credentials or consume quota.
 
 ## Supported Track Formats
 
@@ -174,7 +187,6 @@ Contains all visual styling for cards, inputs, buttons, track list rows, logs, p
 Contains:
 
 - Sample track data
-- Track parsing
 - File upload handling
 - Google OAuth token setup
 - YouTube API request helper
@@ -182,6 +194,19 @@ Contains:
 - Playlist creation
 - Playlist item insertion
 - Progress and status rendering
+
+### `track-parser.js`
+
+Contains pure parsing utilities used by both the browser app and Node tests:
+
+- Number/bullet cleanup
+- CSV-style row parsing
+- YouTube URL/video ID extraction
+- Track object creation
+
+### `tests/`
+
+Contains offline unit tests for parser behavior. Run with `npm test`.
 
 ## Notes
 
