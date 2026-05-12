@@ -1,11 +1,12 @@
 # YouTube Playlist Creator
 
-A small browser-based tool for creating a YouTube or YouTube Music playlist from a pasted track list or uploaded text file.
+A small browser-based tool for creating a YouTube or YouTube Music playlist from a pasted track list or uploaded text file, or adding new tracks to an existing playlist.
 
 The app uses the YouTube Data API v3 to:
 
 - Authenticate with a Google account
 - Create a playlist
+- Load existing playlists for updates
 - Search YouTube for tracks that do not already include a YouTube URL or video ID
 - Add the matched videos to the playlist
 
@@ -13,7 +14,7 @@ The app uses the YouTube Data API v3 to:
 
 ```text
 .
-├── yt-playlist-creator.html  # App markup
+├── index.html                # App markup
 ├── styles.css                # UI styling
 ├── track-parser.js           # Pure track parsing utilities
 ├── playlist-creator.js       # Browser UI, auth, YouTube API calls
@@ -63,21 +64,23 @@ python3 -m http.server 8000
 Then open:
 
 ```text
-http://localhost:8000/yt-playlist-creator.html
+http://localhost:8000/
 ```
 
 Add `http://localhost:8000` as an authorized JavaScript origin in your OAuth client.
 
 ## Usage
 
-1. Open `yt-playlist-creator.html` in a browser.
+1. Open `index.html` in a browser.
 2. Enter your YouTube Data API key.
 3. Enter your OAuth 2.0 Client ID.
 4. Click **Connect Google Account**.
-5. Set the playlist name, description, and visibility.
-6. Paste tracks into the track list or upload a text-like file.
-7. Click **Load Tracks**.
-8. Click **Create Playlist**.
+5. Choose **Create New** or **Update Existing**.
+6. For create mode, set the playlist name, description, and visibility.
+7. For update mode, select an existing playlist.
+8. Paste tracks into the track list or upload a text-like file.
+9. Click **Load Tracks**.
+10. Click **Create Playlist** or **Add to Playlist**.
 
 ## Tests
 
@@ -152,6 +155,7 @@ Current approximate cost:
 
 ```text
 Create playlist:       50 units
+Load playlists:         low cost, depends on playlist count/pages
 Search one track:     100 units
 Add one video:         50 units
 ```
@@ -196,13 +200,14 @@ The YouTube Data API does not provide a bulk playlist item insert endpoint, so e
 
 ## Main Files
 
-### `yt-playlist-creator.html`
+### `index.html`
 
 Contains the app layout and loads:
 
 - Google fonts
 - `styles.css`
 - Google Identity Services
+- `track-parser.js`
 - `playlist-creator.js`
 
 ### `styles.css`
@@ -219,6 +224,8 @@ Contains:
 - YouTube API request helper
 - Video search
 - Playlist creation
+- Existing playlist loading
+- Existing playlist updates
 - Playlist item insertion
 - Progress and status rendering
 

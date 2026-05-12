@@ -14,6 +14,8 @@ let tokenClient = null;
 let tracks = [];
 let songStatuses = [];
 let videoIds = [];
+let mode = 'create';
+let playlists = [];
 const { parseTracks } = window.TrackParser;
 
 function escapeHtml(value) {
@@ -32,8 +34,40 @@ function setTracks(nextTracks) {
   videoIds = tracks.map(() => null);
   document.getElementById('songCount').textContent = `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`;
   document.getElementById('trackListLabel').textContent = tracks.length ? 'Loaded tracks' : 'No tracks loaded';
-  document.getElementById('createBtn').disabled = !accessToken || tracks.length === 0;
+  updateActionState();
   resetStatuses(false);
+}
+
+function selectedPlaylistId() {
+  return document.getElementById('existingPlaylist')?.value || '';
+}
+
+function updateActionState() {
+  const button = document.getElementById('createBtn');
+  const hasTracks = tracks.length > 0;
+  const canCreate = mode === 'create' && accessToken && hasTracks;
+  const canUpdate = mode === 'update' && accessToken && hasTracks && selectedPlaylistId();
+
+  button.disabled = !(canCreate || canUpdate);
+  button.textContent = mode === 'create' ? 'Create Playlist →' : 'Add to Playlist →';
+}
+
+function setMode(nextMode) {
+  mode = nextMode;
+  const isCreate = mode === 'create';
+
+  document.getElementById('createPanel').classList.toggle('hidden', !isCreate);
+  document.getElementById('updatePanel').classList.toggle('hidden', isCreate);
+  document.getElementById('createTab').classList.toggle('active', isCreate);
+  document.getElementById('updateTab').classList.toggle('active', !isCreate);
+  document.getElementById('createTab').setAttribute('aria-selected', String(isCreate));
+  document.getElementById('updateTab').setAttribute('aria-selected', String(!isCreate));
+
+  if (!isCreate && accessToken && playlists.length === 0) {
+    loadPlaylists();
+  }
+
+  updateActionState();
 }
 
 function applyTrackInput() {
@@ -123,8 +157,9 @@ function initAuth() {
       accessToken = response.access_token;
       document.getElementById('authBadge').className = 'auth-badge connected';
       document.getElementById('authLabel').textContent = 'connected';
-      document.getElementById('createBtn').disabled = !accessToken || tracks.length === 0;
+      updateActionState();
       log('✓ Authenticated successfully', 'ok');
+      loadPlaylists();
     }
   });
 
@@ -160,6 +195,72 @@ async function searchVideo(track) {
   return null;
 }
 
+async function loadPlaylists() {
+  if (!accessToken) {
+    alert('Please connect your Google account first.');
+    return;
+  }
+
+  const select = document.getElementById('existingPlaylist');
+  const status = document.getElementById('playlistLoadStatus');
+  status.textContent = 'loading…';
+  select.disabled = true;
+
+  try {
+    const loaded = [];
+    let pageToken = '';
+
+    do {
+      const pageParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
+      const data = await ytFetch(
+        `https://www.googleapis.com/youtube/v3/playlists?part=snippet,status&mine=true&maxResults=50${pageParam}`
+      );
+      loaded.push(...(data.items || []));
+      pageToken = data.nextPageToken || '';
+    } while (pageToken);
+
+    playlists = loaded;
+    select.innerHTML = '';
+
+    if (!playlists.length) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No playlists found';
+      select.appendChild(option);
+      status.textContent = '0 playlists';
+    } else {
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Select a playlist';
+      select.appendChild(placeholder);
+
+      playlists.forEach((playlist) => {
+        const option = document.createElement('option');
+        option.value = playlist.id;
+        option.textContent = playlist.snippet?.title || playlist.id;
+        select.appendChild(option);
+      });
+
+      status.textContent = `${playlists.length} loaded`;
+    }
+  } catch (e) {
+    select.innerHTML = '<option value="">Could not load playlists</option>';
+    status.textContent = 'failed';
+    log('Failed to load playlists: ' + e.message, 'err');
+  } finally {
+    select.disabled = false;
+    updateActionState();
+  }
+}
+
+async function submitPlaylist() {
+  if (mode === 'update') {
+    await updatePlaylist();
+  } else {
+    await createPlaylist();
+  }
+}
+
 async function createPlaylist() {
   if (!accessToken) { alert('Please connect your Google account first.'); return; }
   if (!tracks.length) { alert('Please load at least one track first.'); return; }
@@ -191,56 +292,91 @@ async function createPlaylist() {
     const playlistId = plData.id;
     log('✓ Playlist created (ID: ' + playlistId + ')', 'ok');
 
-    let done = 0, added = 0, failed = 0;
-
-    for (let i = 0; i < tracks.length; i++) {
-      songStatuses[i] = 'loading';
-      renderSongs();
-
-      try {
-        const videoId = tracks[i].videoId || await searchVideo(tracks[i]);
-        if (!videoId) throw new Error('no results');
-
-        videoIds[i] = videoId;
-
-        await ytFetch('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet', {
-          method: 'POST',
-          body: JSON.stringify({
-            snippet: {
-              playlistId,
-              resourceId: { kind: 'youtube#video', videoId }
-            }
-          })
-        });
-
-        songStatuses[i] = 'ok';
-        added++;
-        log(`✓ ${tracks[i].display}`, 'ok');
-      } catch (e) {
-        songStatuses[i] = 'err';
-        failed++;
-        log(`✗ ${tracks[i].display} — ${e.message}`, 'err');
-      }
-
-      done++;
-      updateProgress(done, tracks.length);
-      renderSongs();
-
-      await new Promise(r => setTimeout(r, 300));
-    }
-
-    log(`─── Done: ${added} added, ${failed} not found ───`, 'info');
-
-    const result = document.getElementById('resultCard');
-    result.classList.add('visible');
-    document.getElementById('resultMeta').textContent = `${added} of ${tracks.length} tracks added · ${privacy}`;
-    const link = `https://music.youtube.com/playlist?list=${playlistId}`;
-    document.getElementById('resultLink').href = link;
+    await addTracksToPlaylist(playlistId, {
+      doneMessagePrivacy: privacy,
+      resultTitle: '🎉 Playlist created!'
+    });
   } catch (e) {
     log('Failed to create playlist: ' + e.message, 'err');
   } finally {
-    document.getElementById('createBtn').disabled = !accessToken || tracks.length === 0;
+    updateActionState();
   }
+}
+
+async function updatePlaylist() {
+  if (!accessToken) { alert('Please connect your Google account first.'); return; }
+  if (!tracks.length) { alert('Please load at least one track first.'); return; }
+
+  const playlistId = selectedPlaylistId();
+  if (!playlistId) { alert('Please select a playlist to update.'); return; }
+
+  document.getElementById('createBtn').disabled = true;
+  document.getElementById('progressBar').classList.add('visible');
+  document.getElementById('resultCard').classList.remove('visible');
+  document.getElementById('logBox').innerHTML = '';
+  document.getElementById('logBox').classList.add('visible');
+
+  const playlistTitle = document.getElementById('existingPlaylist').selectedOptions[0]?.textContent || playlistId;
+
+  try {
+    log('Updating playlist "' + playlistTitle + '"…', 'info');
+    await addTracksToPlaylist(playlistId, {
+      doneMessagePrivacy: 'existing playlist',
+      resultTitle: '🎉 Playlist updated!'
+    });
+  } catch (e) {
+    log('Failed to update playlist: ' + e.message, 'err');
+  } finally {
+    updateActionState();
+  }
+}
+
+async function addTracksToPlaylist(playlistId, resultOptions) {
+  let done = 0, added = 0, failed = 0;
+
+  for (let i = 0; i < tracks.length; i++) {
+    songStatuses[i] = 'loading';
+    renderSongs();
+
+    try {
+      const videoId = tracks[i].videoId || await searchVideo(tracks[i]);
+      if (!videoId) throw new Error('no results');
+
+      videoIds[i] = videoId;
+
+      await ytFetch('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet', {
+        method: 'POST',
+        body: JSON.stringify({
+          snippet: {
+            playlistId,
+            resourceId: { kind: 'youtube#video', videoId }
+          }
+        })
+      });
+
+      songStatuses[i] = 'ok';
+      added++;
+      log(`✓ ${tracks[i].display}`, 'ok');
+    } catch (e) {
+      songStatuses[i] = 'err';
+      failed++;
+      log(`✗ ${tracks[i].display} — ${e.message}`, 'err');
+    }
+
+    done++;
+    updateProgress(done, tracks.length);
+    renderSongs();
+
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  log(`─── Done: ${added} added, ${failed} not found ───`, 'info');
+
+  const result = document.getElementById('resultCard');
+  result.classList.add('visible');
+  document.querySelector('.result-title').textContent = resultOptions.resultTitle;
+  document.getElementById('resultMeta').textContent = `${added} of ${tracks.length} tracks added · ${resultOptions.doneMessagePrivacy}`;
+  document.getElementById('resultLink').href = `https://music.youtube.com/playlist?list=${playlistId}`;
 }
 
 document.getElementById('trackFile').addEventListener('change', async (event) => {

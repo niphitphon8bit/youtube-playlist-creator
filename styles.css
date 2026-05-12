@@ -129,6 +129,44 @@ select option { background: #1a1a1a; }
 }
 .btn-ghost:hover { color: var(--text); }
 
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.tab {
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: 'Syne', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.65rem 0.75rem;
+  transition: background 0.2s, color 0.2s;
+}
+
+.tab:hover { color: var(--text); }
+.tab.active {
+  background: var(--red);
+  color: white;
+}
+
+.hidden { display: none; }
+
+.inline-status {
+  color: var(--muted);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.75rem;
+}
+
 .songs-header {
   display: flex;
   align-items: center;

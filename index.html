@@ -45,6 +45,12 @@
 
   <div class="card">
     <div class="card-title">02 — Playlist Details</div>
+    <div class="tabs" role="tablist" aria-label="Playlist mode">
+      <button class="tab active" id="createTab" type="button" onclick="setMode('create')" role="tab" aria-selected="true">Create New</button>
+      <button class="tab" id="updateTab" type="button" onclick="setMode('update')" role="tab" aria-selected="false">Update Existing</button>
+    </div>
+
+    <div id="createPanel">
     <label for="playlistName">Playlist name</label>
     <input type="text" id="playlistName" value="The Weeknd — Concert Setlist 2026">
 
@@ -57,6 +63,21 @@
       <option value="public">Public</option>
       <option value="unlisted">Unlisted</option>
     </select>
+    </div>
+
+    <div id="updatePanel" class="hidden">
+      <label for="existingPlaylist">Existing playlist</label>
+      <select id="existingPlaylist" onchange="updateActionState()">
+        <option value="">Connect your account to load playlists</option>
+      </select>
+      <div class="actions">
+        <button class="btn btn-outline" type="button" onclick="loadPlaylists()">Refresh Playlists</button>
+        <span class="inline-status" id="playlistLoadStatus"></span>
+      </div>
+      <div class="api-key-note">
+        New tracks will be added to the selected playlist. Existing playlist title, description, and visibility are not changed.
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -96,7 +117,7 @@
     <div class="song-list" id="songList"></div>
 
     <div class="actions">
-      <button class="btn btn-primary" id="createBtn" onclick="createPlaylist()" disabled>
+      <button class="btn btn-primary" id="createBtn" onclick="submitPlaylist()" disabled>
         Create Playlist →
       </button>
       <button class="btn btn-ghost" onclick="resetStatuses()">Reset</button>
