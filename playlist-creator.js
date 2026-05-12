@@ -16,6 +16,7 @@ let songStatuses = [];
 let videoIds = [];
 let mode = 'create';
 let playlists = [];
+let songSearchResults = [];
 const { parseTracks } = window.TrackParser;
 
 function escapeHtml(value) {
@@ -33,7 +34,7 @@ function setTracks(nextTracks) {
   songStatuses = tracks.map(() => 'pending');
   videoIds = tracks.map(() => null);
   document.getElementById('songCount').textContent = `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`;
-  document.getElementById('trackListLabel').textContent = tracks.length ? 'Loaded tracks' : 'No tracks loaded';
+  document.getElementById('trackListLabel').textContent = tracks.length ? 'Songs ready to add' : 'Queue is empty';
   updateActionState();
   resetStatuses(false);
 }
@@ -84,10 +85,126 @@ function loadSampleTracks(showLog = true) {
   }
 }
 
+function appendTrackLine(line) {
+  const input = document.getElementById('trackInput');
+  const current = input.value.trim();
+  input.value = current ? `${current}\n${line}` : line;
+  applyTrackInput();
+}
+
+function syncTrackInputFromQueue() {
+  document.getElementById('trackInput').value = tracks.map((track) => track.display).join('\n');
+}
+
+function removeTrack(index) {
+  tracks.splice(index, 1);
+  setTracks([...tracks]);
+  syncTrackInputFromQueue();
+}
+
+function clearTrackQueue() {
+  tracks = [];
+  syncTrackInputFromQueue();
+  setTracks([]);
+}
+
+function renderSongSearchResults(items, statusText = '') {
+  const box = document.getElementById('songSearchResults');
+  songSearchResults = items;
+  box.innerHTML = '';
+  box.classList.toggle('visible', Boolean(items.length || statusText));
+
+  if (statusText) {
+    const status = document.createElement('div');
+    status.className = 'finder-empty';
+    status.textContent = statusText;
+    box.appendChild(status);
+    return;
+  }
+
+  items.forEach((item, index) => {
+    const row = document.createElement('div');
+    row.className = 'finder-item';
+
+    const artwork = document.createElement('div');
+    artwork.className = 'finder-artwork';
+    if (item.artworkUrl) {
+      const image = document.createElement('img');
+      image.src = item.artworkUrl;
+      image.alt = '';
+      image.loading = 'lazy';
+      artwork.appendChild(image);
+    } else {
+      artwork.textContent = '♪';
+    }
+
+    const copy = document.createElement('div');
+    copy.className = 'finder-copy';
+
+    const title = document.createElement('div');
+    title.className = 'finder-title';
+    title.textContent = `${item.artistName} - ${item.trackName}`;
+
+    const meta = document.createElement('div');
+    meta.className = 'finder-meta';
+    meta.textContent = item.collectionName || 'Single';
+
+    const button = document.createElement('button');
+    button.className = 'btn btn-outline btn-compact';
+    button.type = 'button';
+    button.textContent = 'Add';
+    button.addEventListener('click', () => {
+      appendTrackLine(`${songSearchResults[index].artistName} - ${songSearchResults[index].trackName}`);
+      log(`Added suggestion: ${songSearchResults[index].artistName} - ${songSearchResults[index].trackName}`, 'ok');
+    });
+
+    copy.append(title, meta);
+    row.append(artwork, copy, button);
+    box.appendChild(row);
+  });
+}
+
+async function searchSongCatalog() {
+  const input = document.getElementById('songSearchInput');
+  const button = document.getElementById('songSearchBtn');
+  const query = input.value.trim();
+
+  if (!query) {
+    renderSongSearchResults([], 'Enter a song, artist, or both.');
+    return;
+  }
+
+  button.disabled = true;
+  renderSongSearchResults([], 'Searching music catalog…');
+
+  try {
+    const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=8`);
+    if (!res.ok) {
+      throw new Error(`Catalog search failed (${res.status})`);
+    }
+
+    const data = await res.json();
+    const results = (data.results || [])
+      .filter((item) => item.artistName && item.trackName)
+      .map((item) => ({
+        artistName: item.artistName,
+        trackName: item.trackName,
+        collectionName: item.collectionName || '',
+        artworkUrl: item.artworkUrl100 || item.artworkUrl60 || ''
+      }));
+
+    renderSongSearchResults(results, results.length ? '' : 'No song suggestions found.');
+  } catch (e) {
+    renderSongSearchResults([], e.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function renderSongs() {
   const list = document.getElementById('songList');
   if (!tracks.length) {
-    list.innerHTML = '<div class="api-key-note">Load tracks from the textarea or an uploaded file.</div>';
+    list.innerHTML = '<div class="queue-empty">Search a song, paste source text, or upload a file to build the queue.</div>';
     return;
   }
 
@@ -97,11 +214,23 @@ function renderSongs() {
     if (st === 'ok') { cls = 'matched'; label = `<span class="song-status status-ok">added</span>`; }
     else if (st === 'err') { cls = 'failed'; label = `<span class="song-status status-err">not found</span>`; }
     else if (st === 'loading') { label = `<span class="song-status status-loading">${track.videoId ? 'adding…' : 'searching…'}</span>`; }
-    else { label = `<span class="song-status status-pending">${track.videoId ? 'url' : '—'}</span>`; }
+    else { label = `<span class="song-status status-pending">${track.videoId ? 'direct url' : 'needs match'}</span>`; }
+    const source = track.videoId ? 'YouTube URL/video ID supplied' : 'Will resolve from artist/title';
+    const searchQuery = encodeURIComponent(track.artist ? `${track.artist} ${track.title}` : track.title);
+    const manualSearch = track.videoId
+      ? ''
+      : `<a class="song-search-link" href="https://www.youtube.com/results?search_query=${searchQuery}" target="_blank" rel="noopener noreferrer">Search YouTube</a>`;
     return `<div class="song-item ${cls}">
       <span class="song-num">${String(i + 1).padStart(2, '0')}</span>
-      <span class="song-name">${escapeHtml(track.display)}</span>
-      ${label}
+      <span class="song-copy">
+        <span class="song-name">${escapeHtml(track.display)}</span>
+        <span class="song-source">${escapeHtml(source)}</span>
+      </span>
+      <span class="song-actions">
+        ${manualSearch}
+        ${label}
+        <button class="song-remove" type="button" onclick="removeTrack(${i})" aria-label="Remove track ${i + 1}">×</button>
+      </span>
     </div>`;
   }).join('');
 }
@@ -392,6 +521,13 @@ document.getElementById('trackFile').addEventListener('change', async (event) =>
     log(`Could not read file: ${e.message}`, 'err');
   } finally {
     event.target.value = '';
+  }
+});
+
+document.getElementById('songSearchInput').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    searchSongCatalog();
   }
 });
 

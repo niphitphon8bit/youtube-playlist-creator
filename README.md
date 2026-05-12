@@ -7,6 +7,7 @@ The app uses the YouTube Data API v3 to:
 - Authenticate with a Google account
 - Create a playlist
 - Load existing playlists for updates
+- Search a music catalog for song-name suggestions
 - Search YouTube for tracks that do not already include a YouTube URL or video ID
 - Add the matched videos to the playlist
 
@@ -78,9 +79,23 @@ Add `http://localhost:8000` as an authorized JavaScript origin in your OAuth cli
 5. Choose **Create New** or **Update Existing**.
 6. For create mode, set the playlist name, description, and visibility.
 7. For update mode, select an existing playlist.
-8. Paste tracks into the track list or upload a text-like file.
-9. Click **Load Tracks**.
-10. Click **Create Playlist** or **Add to Playlist**.
+8. Optionally use **Find songs** to search catalog suggestions and append them to the queue.
+9. Paste tracks into the source textarea or upload a text-like file.
+10. Click **Load Tracks** to build the reviewable song queue.
+11. Remove any unwanted rows from the queue if needed.
+12. Click **Create Playlist** or **Add to Playlist**.
+
+## Song Finder
+
+The **Find songs** helper queries a music catalog and displays artist/title suggestions with available artwork thumbnails. Clicking **Add** appends the selected result to the track list as:
+
+```text
+Artist - Song
+```
+
+This improves discoverability for users who do not already have a prepared list. It does not provide YouTube video IDs by itself, so YouTube resolution still happens later unless the track line already contains a YouTube URL or video ID.
+
+The loaded queue is the final review step before playlist creation or update. Each row shows whether it already has a direct YouTube target or still needs matching, and rows can be removed individually. Rows that still need matching also include a direct **Search YouTube** link for manual review.
 
 ## Tests
 
@@ -220,6 +235,7 @@ Contains:
 
 - Sample track data
 - File upload handling
+- Music catalog suggestion search
 - Google OAuth token setup
 - YouTube API request helper
 - Video search

@@ -167,6 +167,114 @@ select option { background: #1a1a1a; }
   font-size: 0.75rem;
 }
 
+.finder-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.finder-search {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+}
+
+.finder-results {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.finder-results.visible {
+  margin-top: 0.25rem;
+}
+
+.finder-empty {
+  color: var(--muted);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.75rem;
+}
+
+.finder-item {
+  align-items: center;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  padding: 0.65rem 0.75rem;
+}
+
+.finder-artwork {
+  align-items: center;
+  aspect-ratio: 1;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  display: flex;
+  font-family: 'DM Mono', monospace;
+  font-size: 1rem;
+  height: 48px;
+  justify-content: center;
+  overflow: hidden;
+  width: 48px;
+}
+
+.finder-artwork img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.finder-copy {
+  min-width: 0;
+}
+
+.finder-title {
+  color: var(--text);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.finder-meta {
+  color: var(--muted);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.7rem;
+  margin-top: 0.2rem;
+  overflow-wrap: anywhere;
+}
+
+.btn-compact {
+  padding: 0.55rem 0.8rem;
+}
+
+.queue-summary {
+  align-items: start;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+}
+
+.queue-kicker {
+  color: var(--muted);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.7rem;
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+}
+
+.queue-title {
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
 .songs-header {
   display: flex;
   align-items: center;
@@ -191,8 +299,8 @@ select option { background: #1a1a1a; }
 .song-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  max-height: 320px;
+  gap: 0.55rem;
+  max-height: 420px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -202,13 +310,14 @@ select option { background: #1a1a1a; }
 .song-list::-webkit-scrollbar-thumb { background: var(--muted2); border-radius: 4px; }
 
 .song-item {
-  display: flex;
+  display: grid;
   align-items: center;
   gap: 0.75rem;
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 0.55rem 0.75rem;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  padding: 0.7rem 0.75rem;
   transition: border-color 0.15s;
 }
 .song-item:hover { border-color: var(--border-hover); }
@@ -219,14 +328,47 @@ select option { background: #1a1a1a; }
   font-family: 'DM Mono', monospace;
   font-size: 0.7rem;
   color: var(--muted2);
-  min-width: 22px;
+  min-width: 28px;
   text-align: right;
 }
 
+.song-copy {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
 .song-name {
-  flex: 1;
+  color: var(--text);
   font-size: 0.85rem;
   font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.song-source {
+  color: var(--muted);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.68rem;
+  overflow-wrap: anywhere;
+}
+
+.song-actions {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.55rem;
+}
+
+.song-search-link {
+  border-bottom: 1px solid rgba(255,45,85,0.35);
+  color: var(--red);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.68rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.song-search-link:hover {
+  border-color: var(--red);
 }
 
 .song-status {
@@ -240,6 +382,36 @@ select option { background: #1a1a1a; }
 .status-pending { background: rgba(255,255,255,0.05); color: var(--muted); }
 .status-loading { color: var(--warn); font-size: 0.65rem; animation: pulse 1s infinite; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.song-remove {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border-hover);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.9rem;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.song-remove:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.queue-empty {
+  background: var(--surface2);
+  border: 1px dashed var(--border-hover);
+  border-radius: 8px;
+  color: var(--muted);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.75rem;
+  padding: 1rem;
+}
 
 .actions {
   display: flex;
@@ -390,5 +562,11 @@ select option { background: #1a1a1a; }
 
 @media (max-width: 560px) {
   .input-row { grid-template-columns: 1fr; }
+  .finder-search { grid-template-columns: 1fr; }
+  .finder-item { grid-template-columns: 48px minmax(0, 1fr); }
+  .finder-item .btn { grid-column: 1 / -1; }
+  .queue-summary { flex-direction: column; }
+  .song-item { grid-template-columns: 28px minmax(0, 1fr); }
+  .song-actions { grid-column: 1 / -1; justify-content: space-between; }
   .btn { justify-content: center; }
 }

@@ -82,9 +82,31 @@
 
   <div class="card">
     <div class="card-title">03 — Tracks</div>
-    <div class="input-row">
+    <div class="queue-summary">
       <div>
-        <label for="trackInput">Track list</label>
+        <div class="queue-kicker">Build queue</div>
+        <div class="queue-title">Search songs or paste text, then review the list before adding.</div>
+      </div>
+      <span class="song-count" id="songCount">0 tracks</span>
+    </div>
+
+    <div class="finder-panel">
+      <label for="songSearchInput">Find songs</label>
+      <div class="finder-search">
+        <input type="search" id="songSearchInput" placeholder="Search artist, track, or both" autocomplete="off">
+        <button class="btn btn-outline" id="songSearchBtn" type="button" onclick="searchSongCatalog()">Search</button>
+      </div>
+      <div class="api-key-note">
+        Pick a suggestion to append `Artist - Song` to the track list. YouTube URL resolution still happens later.
+      </div>
+      <div class="finder-results" id="songSearchResults"></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="input-row queue-input-row">
+      <div>
+        <label for="trackInput">Paste or edit source text</label>
         <textarea id="trackInput" class="track-input" spellcheck="false"></textarea>
       </div>
       <div>
@@ -110,8 +132,8 @@
     <div class="divider"></div>
 
     <div class="songs-header">
-      <span id="trackListLabel">Loaded tracks</span>
-      <span class="song-count" id="songCount">0 tracks</span>
+      <span id="trackListLabel">Songs ready to add</span>
+      <button class="btn btn-ghost" type="button" onclick="clearTrackQueue()">Clear Queue</button>
     </div>
 
     <div class="song-list" id="songList"></div>
