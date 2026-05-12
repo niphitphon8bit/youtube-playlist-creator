@@ -5,6 +5,7 @@ A small browser-based tool for creating a YouTube or YouTube Music playlist from
 The app uses the YouTube Data API v3 to:
 
 - Authenticate with a Google account
+- Load the signed-in Google profile for account-aware UI state
 - Create a playlist
 - Load existing playlists for updates
 - Search a music catalog for song-name suggestions
@@ -43,7 +44,7 @@ The app uses the YouTube Data API v3 to:
 - Node.js built-in HTTP server for the backend
 - Node.js built-in test runner for offline unit tests
 
-No frontend framework or bundler is required. The Node backend now serves the frontend, completes OAuth code exchange, persists the encrypted refresh token locally, and proxies YouTube API calls.
+No frontend framework or bundler is required. The Node backend now serves the frontend, completes OAuth code exchange, resolves the signed-in Google profile, persists encrypted refresh tokens locally per Google account, and proxies YouTube API calls.
 
 ## Google Setup
 
@@ -55,6 +56,7 @@ No frontend framework or bundler is required. The Node backend now serves the fr
 3. Create an **OAuth 2.0 Client ID**:
    - Application type: **Web application**
    - Add `http://localhost:8787/auth/google/callback` as an authorized redirect URI.
+   - The backend requests `openid`, `email`, `profile`, and YouTube access so it can identify the signed-in user and manage playlists.
 
 4. Copy the environment template and fill it:
 
@@ -86,15 +88,17 @@ openssl rand -base64 32
    npm run dev
    ```
 2. Open `http://localhost:8787/`.
-3. Click **Connect Google Account**.
-4. Choose **Create New** or **Update Existing**.
+3. Complete Step 1 by clicking **Connect Google Account**.
+   The connection card will show the signed-in Google name, email, and profile image when available.
+4. Continue to Step 2 and choose **Create New** or **Update Existing**.
 5. For create mode, set the playlist name, description, and visibility.
 6. For update mode, select an existing playlist.
-7. Optionally use **Find songs** to search catalog suggestions and append them to the queue.
-8. Paste tracks into the source textarea or upload a text-like file.
-9. Click **Load Tracks** to build the reviewable song queue.
-10. Remove any unwanted rows from the queue if needed.
-11. Click **Create Playlist** or **Add to Playlist**.
+7. Continue to Step 3.
+8. Optionally use **Find songs** to search catalog suggestions and append them to the queue.
+9. Paste tracks into the source textarea or upload a text-like file.
+10. Click **Load Tracks** to build the reviewable song queue.
+11. Remove any unwanted rows from the queue if needed.
+12. Click **Create Playlist** or **Add to Playlist**.
 
 ## Song Finder
 
@@ -274,8 +278,9 @@ Contains offline unit tests for parser behavior. Run with `npm test`.
 Contains the no-dependency backend scaffold:
 
 - Google OAuth authorization-code flow with offline access
+- Google OpenID Connect profile lookup with `openid email profile`
 - Signed HTTP-only session cookie
-- Encrypted refresh-token file store under `.data/`
+- Encrypted refresh-token file store under `.data/`, keyed by Google account ID
 - Static frontend serving
 - YouTube API proxy endpoints used by the browser
 
@@ -284,3 +289,4 @@ Contains the no-dependency backend scaffold:
 - Do not commit `.env`, `.data/`, OAuth client secrets, session secrets, encryption keys, or refresh tokens.
 - The included encrypted file token store is suitable for local/dev branch work. Replace it with a durable database-backed store before a real multi-user production deployment.
 - Refresh tokens are requested through Google's web-server OAuth flow with offline access, not stored in the browser.
+- Account/profile data is read from Google's OpenID Connect userinfo endpoint after login and returned to the frontend only through `/api/auth/status`.

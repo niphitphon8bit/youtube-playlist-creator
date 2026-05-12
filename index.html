@@ -18,8 +18,23 @@
     </div>
   </header>
 
-  <div class="card">
-    <div class="card-title">01 — Google Connection</div>
+  <nav class="stepper" aria-label="Playlist creation steps">
+    <button class="step-pill active" id="stepPill1" type="button" onclick="goToStep(1)">
+      <span>01</span>
+      Connect
+    </button>
+    <button class="step-pill" id="stepPill2" type="button" onclick="goToStep(2)">
+      <span>02</span>
+      Playlist
+    </button>
+    <button class="step-pill" id="stepPill3" type="button" onclick="goToStep(3)">
+      <span>03</span>
+      Tracks
+    </button>
+  </nav>
+
+  <div class="card wizard-step" id="wizardStep1">
+    <div class="card-title">01 — Connect Google</div>
     <div class="api-key-note">
       Google OAuth credentials are configured on the backend. Connect once to create a server-side session and allow refresh-token reuse.
     </div>
@@ -32,10 +47,15 @@
         <span id="authLabel">not connected</span>
       </div>
     </div>
+    <div class="account-summary hidden" id="accountSummary"></div>
+    <div class="wizard-actions">
+      <span class="inline-status" id="stepOneStatus">Connect your account to continue.</span>
+      <button class="btn btn-primary" id="stepOneNext" type="button" onclick="nextStep()">Next →</button>
+    </div>
   </div>
 
-  <div class="card">
-    <div class="card-title">02 — Playlist Details</div>
+  <div class="card wizard-step hidden" id="wizardStep2">
+    <div class="card-title">02 — Choose Playlist Action</div>
     <div class="tabs" role="tablist" aria-label="Playlist mode">
       <button class="tab active" id="createTab" type="button" onclick="setMode('create')" role="tab" aria-selected="true">Create New</button>
       <button class="tab" id="updateTab" type="button" onclick="setMode('update')" role="tab" aria-selected="false">Update Existing</button>
@@ -78,10 +98,15 @@
         New tracks will be added to the selected playlist. Existing playlist title, description, and visibility are not changed.
       </div>
     </div>
+    <div class="wizard-actions">
+      <button class="btn btn-ghost" type="button" onclick="previousStep()">← Back</button>
+      <span class="inline-status" id="stepTwoStatus"></span>
+      <button class="btn btn-primary" id="stepTwoNext" type="button" onclick="nextStep()">Next →</button>
+    </div>
   </div>
 
-  <div class="card">
-    <div class="card-title">03 — Tracks</div>
+  <div class="card wizard-step hidden" id="wizardStep3">
+    <div class="card-title">03 — Build And Submit Tracks</div>
     <div class="queue-summary">
       <div>
         <div class="queue-kicker">Build queue</div>
@@ -90,74 +115,116 @@
       <span class="song-count" id="songCount">0 tracks</span>
     </div>
 
-    <div class="finder-panel">
-      <label for="songSearchInput">Find songs</label>
-      <div class="finder-search">
-        <input type="search" id="songSearchInput" placeholder="Search artist, track, or both" autocomplete="off">
-        <button class="btn btn-outline" id="songSearchBtn" type="button" onclick="searchSongCatalog()">Search</button>
-      </div>
-      <div class="api-key-note">
-        Pick a suggestion to append `Artist - Song` to the track list. YouTube URL resolution still happens later.
-      </div>
-      <div class="finder-results" id="songSearchResults"></div>
+    <div class="track-workspace">
+      <section class="track-column track-source-column">
+        <div class="method-tabs" role="tablist" aria-label="Add song method">
+          <button class="method-tab active" id="searchMethodTab" type="button" onclick="setAddMethod('search')" role="tab" aria-selected="true">Search</button>
+          <button class="method-tab" id="textMethodTab" type="button" onclick="setAddMethod('text')" role="tab" aria-selected="false">Text</button>
+          <button class="method-tab" id="urlMethodTab" type="button" onclick="setAddMethod('url')" role="tab" aria-selected="false">URL</button>
+          <button class="method-tab" id="uploadMethodTab" type="button" onclick="setAddMethod('upload')" role="tab" aria-selected="false">Upload</button>
+        </div>
+
+        <div class="method-panel finder-panel" id="searchMethodPanel">
+          <label for="songSearchInput">Find songs</label>
+          <div class="finder-search">
+            <input type="search" id="songSearchInput" placeholder="Search artist, track, or both" autocomplete="off">
+            <button class="btn btn-outline" id="songSearchBtn" type="button" onclick="searchSongCatalog()">Search</button>
+          </div>
+          <div class="finder-results left-search-results" id="songSearchResults"></div>
+          <div class="search-pagination">
+            <button class="btn btn-ghost" id="searchPrevBtn" type="button" onclick="changeSearchPage(-1)">← Prev</button>
+            <span class="inline-status" id="searchPageLabel">Page 1 of 1</span>
+            <button class="btn btn-ghost" id="searchNextBtn" type="button" onclick="changeSearchPage(1)">Next →</button>
+          </div>
+        </div>
+
+        <div class="method-panel queue-input-row hidden" id="textMethodPanel">
+          <label for="trackInput">Add by pasted text</label>
+          <textarea id="trackInput" class="track-input compact-track-input" spellcheck="false"></textarea>
+          <div class="compact-help">
+            <code>Artist - Song</code>
+            <code>Artist, Song</code>
+          </div>
+          <div class="actions compact-actions">
+            <button class="btn btn-outline" type="button" onclick="applyTrackInput()">Load</button>
+            <button class="btn btn-ghost" type="button" onclick="loadSampleTracks()">Sample</button>
+          </div>
+        </div>
+
+        <div class="method-panel queue-input-row hidden" id="urlMethodPanel">
+          <label for="directUrlInput">Add by YouTube URL or video ID</label>
+          <div class="finder-search">
+            <input type="text" id="directUrlInput" placeholder="https://youtu.be/... or VIDEO_ID">
+            <button class="btn btn-outline" type="button" onclick="addDirectVideoInput()">Add</button>
+          </div>
+        </div>
+
+        <div class="method-panel queue-input-row hidden" id="uploadMethodPanel">
+          <label for="trackFile">Add by upload file</label>
+          <div class="actions compact-actions">
+            <input type="file" id="trackFile" class="file-input" accept=".txt,.csv,.tsv,.md,text/plain,text/csv">
+            <button class="btn btn-outline" type="button" onclick="document.getElementById('trackFile').click()">Upload File</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="track-column queue-review-column">
+        <div class="review-toolbar">
+          <div class="review-heading">Ready To Add</div>
+          <label class="page-size-control" for="reviewPageSize">
+            Show
+            <select id="reviewPageSize" onchange="setReviewPageSize(this.value)">
+              <option value="5" selected>5</option>
+              <option value="10">10</option>
+              <option value="20">20</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="songs-header review-summary">
+          <span id="trackListLabel">Songs ready to add</span>
+          <div class="review-actions">
+            <span class="inline-status" id="reviewCountLabel">0 total</span>
+            <button class="btn btn-ghost" type="button" onclick="clearTrackQueue()">Clear</button>
+          </div>
+        </div>
+
+        <div class="song-list review-list" id="reviewList"></div>
+
+        <div class="review-pagination">
+          <button class="btn btn-ghost" id="reviewPrevBtn" type="button" onclick="changeReviewPage(-1)">← Prev</button>
+          <span class="inline-status" id="reviewPageLabel">Page 1 of 1</span>
+          <button class="btn btn-ghost" id="reviewNextBtn" type="button" onclick="changeReviewPage(1)">Next →</button>
+        </div>
+
+        <div class="queue-submit">
+          <div class="actions compact-actions">
+            <button class="btn btn-primary" id="createBtn" onclick="submitPlaylist()" disabled>
+              Create Playlist →
+            </button>
+            <button class="btn btn-ghost" onclick="resetStatuses()">Reset</button>
+            <span id="progressText"></span>
+          </div>
+
+          <div class="progress-bar" id="progressBar">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+
+          <div class="log-box" id="logBox"></div>
+
+          <div class="result-card" id="resultCard">
+            <div class="result-title">🎉 Playlist created!</div>
+            <div class="result-meta" id="resultMeta"></div>
+            <div class="result-link-row">
+              <a id="resultLink" href="#" target="_blank" rel="noopener noreferrer">Open in YouTube Music →</a>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
 
-    <div class="divider"></div>
-
-    <div class="input-row queue-input-row">
-      <div>
-        <label for="trackInput">Paste or edit source text</label>
-        <textarea id="trackInput" class="track-input" spellcheck="false"></textarea>
-      </div>
-      <div>
-        <input type="file" id="trackFile" class="file-input" accept=".txt,.csv,.tsv,.md,text/plain,text/csv">
-        <button class="btn btn-outline" type="button" onclick="document.getElementById('trackFile').click()">Upload File</button>
-      </div>
-    </div>
-    <div class="api-key-note">
-      Paste one track per line. Supported examples:
-      <div class="format-examples">
-        <code>1. The Weeknd - Blinding Lights</code>
-        <code>The Weeknd, Save Your Tears</code>
-        <code>The Weeknd - After Hours | https://youtu.be/example1234</code>
-        <code>After Hours</code>
-      </div>
-    </div>
-
-    <div class="actions">
-      <button class="btn btn-outline" type="button" onclick="applyTrackInput()">Load Tracks</button>
-      <button class="btn btn-ghost" type="button" onclick="loadSampleTracks()">Use Sample</button>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="songs-header">
-      <span id="trackListLabel">Songs ready to add</span>
-      <button class="btn btn-ghost" type="button" onclick="clearTrackQueue()">Clear Queue</button>
-    </div>
-
-    <div class="song-list" id="songList"></div>
-
-    <div class="actions">
-      <button class="btn btn-primary" id="createBtn" onclick="submitPlaylist()" disabled>
-        Create Playlist →
-      </button>
-      <button class="btn btn-ghost" onclick="resetStatuses()">Reset</button>
-      <span id="progressText"></span>
-    </div>
-
-    <div class="progress-bar" id="progressBar">
-      <div class="progress-fill" id="progressFill"></div>
-    </div>
-
-    <div class="log-box" id="logBox"></div>
-
-    <div class="result-card" id="resultCard">
-      <div class="result-title">🎉 Playlist created!</div>
-      <div class="result-meta" id="resultMeta"></div>
-      <div class="result-link-row">
-        <a id="resultLink" href="#" target="_blank" rel="noopener noreferrer">Open in YouTube Music →</a>
-      </div>
+    <div class="wizard-actions step-three-actions">
+      <button class="btn btn-ghost" type="button" onclick="previousStep()">← Back</button>
     </div>
   </div>
 

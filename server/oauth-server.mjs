@@ -43,7 +43,12 @@ const config = {
   tokenEncryptionKey: process.env.TOKEN_ENCRYPTION_KEY || ''
 };
 
-const scope = 'https://www.googleapis.com/auth/youtube';
+const scopes = [
+  'openid',
+  'email',
+  'profile',
+  'https://www.googleapis.com/auth/youtube'
+];
 function assertConfig() {
   const missing = [];
   if (!config.googleClientId) missing.push('GOOGLE_CLIENT_ID');
@@ -158,29 +163,57 @@ async function writeStore(store) {
   await fs.writeFile(tokenStorePath, JSON.stringify(store, null, 2));
 }
 
-async function saveRefreshToken(refreshToken) {
+async function saveAccountRecord(profile, refreshToken) {
   const store = await readStore();
-  store.default = {
-    refreshToken: encrypt(refreshToken),
+  store.users ||= {};
+  const existing = store.users[profile.sub] || {};
+  store.users[profile.sub] = {
+    refreshToken: refreshToken ? encrypt(refreshToken) : existing.refreshToken,
+    profile: {
+      sub: profile.sub,
+      email: profile.email || '',
+      emailVerified: Boolean(profile.email_verified),
+      name: profile.name || profile.email || 'Google account',
+      givenName: profile.given_name || '',
+      familyName: profile.family_name || '',
+      picture: profile.picture || ''
+    },
     updatedAt: new Date().toISOString()
   };
+  if (!store.users[profile.sub].refreshToken) {
+    throw new Error('Google did not return a refresh token. Revoke consent and try again.');
+  }
   await writeStore(store);
 }
 
-async function loadRefreshToken() {
+async function loadUserRecord(userId) {
   const store = await readStore();
-  if (!store.default?.refreshToken) return null;
-  return decrypt(store.default.refreshToken);
+  return store.users?.[userId] || null;
 }
 
-async function clearRefreshToken() {
-  await writeStore({});
+async function loadRefreshToken(userId) {
+  const record = await loadUserRecord(userId);
+  if (!record?.refreshToken) return null;
+  return decrypt(record.refreshToken);
+}
+
+async function loadStoredProfile(userId) {
+  const record = await loadUserRecord(userId);
+  return record?.profile || null;
+}
+
+async function clearAccountRecord(userId) {
+  const store = await readStore();
+  if (store.users?.[userId]) {
+    delete store.users[userId];
+  }
+  await writeStore(store);
 }
 
 function currentSession(req) {
   const signedId = parseCookies(req).playlist_session;
-  const id = verifySigned(signedId);
-  return id === 'default' ? { id } : null;
+  const userId = verifySigned(signedId);
+  return userId ? { userId } : null;
 }
 
 function authHeaders() {
@@ -205,8 +238,19 @@ async function exchangeCodeForTokens(code) {
   return data;
 }
 
-async function refreshAccessToken() {
-  const refreshToken = await loadRefreshToken();
+async function fetchGoogleProfile(accessToken) {
+  const res = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const data = await res.json();
+  if (!res.ok || !data.sub) {
+    throw new Error(data.error_description || data.error || 'Could not load Google profile.');
+  }
+  return data;
+}
+
+async function refreshAccessToken(userId) {
+  const refreshToken = await loadRefreshToken(userId);
   if (!refreshToken) return null;
   const body = new URLSearchParams({
     client_id: config.googleClientId,
@@ -230,7 +274,7 @@ async function youtubeFetch(req, res, targetPath, init = {}) {
     json(res, 401, { error: 'Not authenticated.' });
     return;
   }
-  const accessToken = await refreshAccessToken();
+  const accessToken = await refreshAccessToken(session.userId);
   if (!accessToken) {
     json(res, 401, { error: 'Reconnect Google to continue.' });
     return;
@@ -284,13 +328,18 @@ async function handler(req, res) {
 
   try {
     if (url.pathname === '/api/auth/status') {
-      const authenticated = Boolean(currentSession(req) && await loadRefreshToken());
-      json(res, 200, { authenticated });
+      const session = currentSession(req);
+      const profile = session ? await loadStoredProfile(session.userId) : null;
+      const authenticated = Boolean(session && profile && await loadRefreshToken(session.userId));
+      json(res, 200, { authenticated, profile: authenticated ? profile : null });
       return;
     }
 
     if (url.pathname === '/api/auth/logout' && req.method === 'POST') {
-      await clearRefreshToken();
+      const session = currentSession(req);
+      if (session) {
+        await clearAccountRecord(session.userId);
+      }
       json(res, 200, { ok: true }, {
         'Set-Cookie': cookie('playlist_session', '', { maxAge: 0, secure: config.appOrigin.startsWith('https://') })
       });
@@ -303,7 +352,7 @@ async function handler(req, res) {
       authUrl.searchParams.set('client_id', config.googleClientId);
       authUrl.searchParams.set('redirect_uri', config.googleRedirectUri);
       authUrl.searchParams.set('response_type', 'code');
-      authUrl.searchParams.set('scope', scope);
+      authUrl.searchParams.set('scope', scopes.join(' '));
       authUrl.searchParams.set('access_type', 'offline');
       authUrl.searchParams.set('include_granted_scopes', 'true');
       authUrl.searchParams.set('prompt', 'consent');
@@ -324,13 +373,11 @@ async function handler(req, res) {
         return;
       }
       const tokens = await exchangeCodeForTokens(code);
-      if (!tokens.refresh_token) {
-        throw new Error('Google did not return a refresh token. Revoke consent and try again.');
-      }
-      await saveRefreshToken(tokens.refresh_token);
+      const profile = await fetchGoogleProfile(tokens.access_token);
+      await saveAccountRecord(profile, tokens.refresh_token || '');
       redirect(res, '/', {
         'Set-Cookie': [
-          cookie('playlist_session', sign('default'), { maxAge: 60 * 60 * 24 * 7, secure: config.appOrigin.startsWith('https://') }),
+          cookie('playlist_session', sign(profile.sub), { maxAge: 60 * 60 * 24 * 7, secure: config.appOrigin.startsWith('https://') }),
           cookie('oauth_state', '', { maxAge: 0, secure: config.appOrigin.startsWith('https://') })
         ]
       });

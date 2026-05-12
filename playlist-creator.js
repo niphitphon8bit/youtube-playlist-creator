@@ -17,6 +17,13 @@ let mode = 'create';
 let playlists = [];
 let songSearchResults = [];
 let existingPlaylistItems = [];
+let currentProfile = null;
+let currentStep = 1;
+let addMethod = 'search';
+let reviewPage = 1;
+let reviewPageSize = 5;
+let searchPage = 1;
+const searchPageSize = 5;
 const { parseTracks } = window.TrackParser;
 
 function escapeHtml(value) {
@@ -34,7 +41,7 @@ function setTracks(nextTracks) {
   songStatuses = tracks.map(() => 'pending');
   videoIds = tracks.map(() => null);
   document.getElementById('songCount').textContent = `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`;
-  document.getElementById('trackListLabel').textContent = tracks.length ? 'Songs ready to add' : 'Queue is empty';
+  reviewPage = 1;
   updateActionState();
   resetStatuses(false);
 }
@@ -50,6 +57,59 @@ function resetExistingPlaylistPreview(message = 'Select a playlist to inspect it
   document.getElementById('existingTrackList').innerHTML = `<div class="queue-empty">${escapeHtml(message)}</div>`;
 }
 
+function stepTwoReady() {
+  if (mode === 'create') {
+    return Boolean(document.getElementById('playlistName').value.trim());
+  }
+  return Boolean(selectedPlaylistId());
+}
+
+function updateWizardState() {
+  [1, 2, 3].forEach((step) => {
+    document.getElementById(`wizardStep${step}`).classList.toggle('hidden', step !== currentStep);
+    const pill = document.getElementById(`stepPill${step}`);
+    pill.classList.toggle('active', step === currentStep);
+    pill.classList.toggle('complete', step < currentStep);
+  });
+
+  const stepOneReady = Boolean(accessToken);
+  const playlistReady = stepTwoReady();
+  const stepOneStatus = document.getElementById('stepOneStatus');
+  const stepTwoStatus = document.getElementById('stepTwoStatus');
+  const stepOneNext = document.getElementById('stepOneNext');
+  const stepTwoNext = document.getElementById('stepTwoNext');
+
+  stepOneNext.disabled = !stepOneReady;
+  stepTwoNext.disabled = !playlistReady;
+  stepOneStatus.textContent = stepOneReady
+    ? 'Google account connected.'
+    : 'Connect your account to continue.';
+  stepTwoStatus.textContent = mode === 'create'
+    ? (playlistReady ? 'Playlist details ready.' : 'Enter a playlist name to continue.')
+    : (playlistReady ? 'Playlist selected.' : 'Select an existing playlist to continue.');
+}
+
+function goToStep(step) {
+  if (step === 1) {
+    currentStep = 1;
+  } else if (step === 2) {
+    if (!accessToken) return;
+    currentStep = 2;
+  } else if (step === 3) {
+    if (!accessToken || !stepTwoReady()) return;
+    currentStep = 3;
+  }
+  updateWizardState();
+}
+
+function nextStep() {
+  goToStep(Math.min(currentStep + 1, 3));
+}
+
+function previousStep() {
+  goToStep(Math.max(currentStep - 1, 1));
+}
+
 function updateActionState() {
   const button = document.getElementById('createBtn');
   const hasTracks = tracks.length > 0;
@@ -58,6 +118,7 @@ function updateActionState() {
 
   button.disabled = !(canCreate || canUpdate);
   button.textContent = mode === 'create' ? 'Create Playlist →' : 'Add to Playlist →';
+  updateWizardState();
 }
 
 function setMode(nextMode) {
@@ -80,56 +141,108 @@ function setMode(nextMode) {
 
 function applyTrackInput() {
   const parsed = parseTracks(document.getElementById('trackInput').value);
-  setTracks(parsed);
-  log(`Loaded ${parsed.length} ${parsed.length === 1 ? 'track' : 'tracks'}`, parsed.length ? 'ok' : 'err');
+  appendTracks(parsed);
+  document.getElementById('trackInput').value = '';
+  log(`Added ${parsed.length} ${parsed.length === 1 ? 'track' : 'tracks'} from text`, parsed.length ? 'ok' : 'err');
 }
 
 function loadSampleTracks(showLog = true) {
-  document.getElementById('trackInput').value = SAMPLE_TRACKS.map((song) => `The Weeknd - ${song}`).join('\n');
-  setTracks(parseTracks(document.getElementById('trackInput').value));
+  const sampleTracks = parseTracks(SAMPLE_TRACKS.map((song) => `The Weeknd - ${song}`).join('\n'));
+  appendTracks(sampleTracks);
   if (showLog) {
-    log(`Loaded ${tracks.length} sample tracks`, 'ok');
+    log(`Added ${sampleTracks.length} sample tracks`, 'ok');
   }
 }
 
-function appendTrackLine(line) {
-  const input = document.getElementById('trackInput');
-  const current = input.value.trim();
-  input.value = current ? `${current}\n${line}` : line;
-  applyTrackInput();
+function appendTracks(nextTracks) {
+  if (!nextTracks.length) return;
+  setTracks([...tracks, ...nextTracks]);
 }
 
-function syncTrackInputFromQueue() {
-  document.getElementById('trackInput').value = tracks.map((track) => track.display).join('\n');
+function appendTrackLine(line) {
+  appendTracks(parseTracks(line));
 }
 
 function removeTrack(index) {
   tracks.splice(index, 1);
   setTracks([...tracks]);
-  syncTrackInputFromQueue();
 }
 
 function clearTrackQueue() {
   tracks = [];
-  syncTrackInputFromQueue();
   setTracks([]);
+}
+
+function setAddMethod(nextMethod) {
+  addMethod = nextMethod;
+  ['search', 'text', 'url', 'upload'].forEach((method) => {
+    const active = method === addMethod;
+    document.getElementById(`${method}MethodTab`).classList.toggle('active', active);
+    document.getElementById(`${method}MethodTab`).setAttribute('aria-selected', String(active));
+    document.getElementById(`${method}MethodPanel`).classList.toggle('hidden', !active);
+  });
 }
 
 function renderSongSearchResults(items, statusText = '') {
   const box = document.getElementById('songSearchResults');
   songSearchResults = items;
+  searchPage = 1;
   box.innerHTML = '';
   box.classList.toggle('visible', Boolean(items.length || statusText));
 
   if (statusText) {
-    const status = document.createElement('div');
-    status.className = 'finder-empty';
-    status.textContent = statusText;
-    box.appendChild(status);
+    box.innerHTML = `<div class="finder-empty">${escapeHtml(statusText)}</div>`;
+    updateSearchPagination(0);
     return;
   }
 
-  items.forEach((item, index) => {
+  if (!items.length) {
+    updateSearchPagination(0);
+    return;
+  }
+
+  renderSearchResultPage();
+}
+
+function changeSearchPage(delta) {
+  searchPage += delta;
+  renderSearchResultPage();
+}
+
+function updateSearchPagination(totalItems) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / searchPageSize));
+  searchPage = Math.min(Math.max(1, searchPage), totalPages);
+  document.getElementById('searchPageLabel').textContent = `Page ${searchPage} of ${totalPages}`;
+  document.getElementById('searchPrevBtn').disabled = searchPage <= 1;
+  document.getElementById('searchNextBtn').disabled = searchPage >= totalPages;
+}
+
+function renderSearchResultPage() {
+  const box = document.getElementById('songSearchResults');
+  const totalPages = Math.max(1, Math.ceil(songSearchResults.length / searchPageSize));
+  searchPage = Math.min(Math.max(1, searchPage), totalPages);
+  const start = (searchPage - 1) * searchPageSize;
+  const pageItems = songSearchResults.slice(start, start + searchPageSize);
+
+  box.innerHTML = '';
+  pageItems.forEach((item, offset) => {
+    box.appendChild(renderSearchResultRow(item, start + offset));
+  });
+  updateSearchPagination(songSearchResults.length);
+}
+
+function setReviewPageSize(value) {
+  reviewPageSize = Number(value) || 5;
+  reviewPage = 1;
+  renderReviewPane();
+}
+
+function changeReviewPage(delta) {
+  reviewPage += delta;
+  renderReviewPane();
+}
+
+function renderSearchResultRow(item, index) {
     const row = document.createElement('div');
     row.className = 'finder-item';
 
@@ -162,13 +275,78 @@ function renderSongSearchResults(items, statusText = '') {
     button.textContent = 'Add';
     button.addEventListener('click', () => {
       appendTrackLine(`${songSearchResults[index].artistName} - ${songSearchResults[index].trackName}`);
+      renderReviewPane();
       log(`Added suggestion: ${songSearchResults[index].artistName} - ${songSearchResults[index].trackName}`, 'ok');
     });
 
     copy.append(title, meta);
     row.append(artwork, copy, button);
-    box.appendChild(row);
-  });
+    return row;
+}
+
+function renderQueueRow(track, i) {
+  const st = songStatuses[i];
+  let cls = '', label = '';
+  if (st === 'ok') { cls = 'matched'; label = `<span class="song-status status-ok">added</span>`; }
+  else if (st === 'err') { cls = 'failed'; label = `<span class="song-status status-err">not found</span>`; }
+  else if (st === 'loading') { label = `<span class="song-status status-loading">${track.videoId ? 'adding…' : 'searching…'}</span>`; }
+  else { label = `<span class="song-status status-pending">${track.videoId ? 'direct url' : 'needs match'}</span>`; }
+  const source = track.videoId ? 'YouTube URL/video ID supplied' : 'Will resolve from artist/title';
+  const searchQuery = encodeURIComponent(track.artist ? `${track.artist} ${track.title}` : track.title);
+  const manualSearch = track.videoId
+    ? ''
+    : `<a class="song-search-link" href="https://www.youtube.com/results?search_query=${searchQuery}" target="_blank" rel="noopener noreferrer">Search YouTube</a>`;
+  return `<div class="song-item ${cls}">
+    <span class="song-num">${String(i + 1).padStart(2, '0')}</span>
+    <span class="song-copy">
+      <span class="song-name">${escapeHtml(track.display)}</span>
+      <span class="song-source">${escapeHtml(source)}</span>
+    </span>
+    <span class="song-actions">
+      ${manualSearch}
+      ${label}
+      <button class="song-remove" type="button" onclick="removeTrack(${i})" aria-label="Remove track ${i + 1}">×</button>
+    </span>
+  </div>`;
+}
+
+function renderReviewPane() {
+  const list = document.getElementById('reviewList');
+  const label = document.getElementById('trackListLabel');
+  const count = document.getElementById('reviewCountLabel');
+  const pageLabel = document.getElementById('reviewPageLabel');
+  const prev = document.getElementById('reviewPrevBtn');
+  const next = document.getElementById('reviewNextBtn');
+  const items = tracks;
+  const totalPages = Math.max(1, Math.ceil(items.length / reviewPageSize));
+  reviewPage = Math.min(Math.max(1, reviewPage), totalPages);
+  const start = (reviewPage - 1) * reviewPageSize;
+  const pageItems = items.slice(start, start + reviewPageSize);
+
+  label.textContent = tracks.length ? 'Songs ready to add' : 'Queue is empty';
+  count.textContent = `${items.length} total`;
+  pageLabel.textContent = `Page ${reviewPage} of ${totalPages}`;
+  prev.disabled = reviewPage <= 1;
+  next.disabled = reviewPage >= totalPages;
+
+  if (!pageItems.length) {
+    list.innerHTML = '<div class="queue-empty">Search a song, paste source text, or upload a file to build the queue.</div>';
+    return;
+  }
+  list.innerHTML = pageItems.map((track, offset) => renderQueueRow(track, start + offset)).join('');
+}
+
+function addDirectVideoInput() {
+  const input = document.getElementById('directUrlInput');
+  const parsed = parseTracks(input.value);
+  const validDirectTracks = parsed.filter((track) => track.videoId);
+  if (!validDirectTracks.length) {
+    log('Enter a valid YouTube URL or 11-character video ID.', 'err');
+    return;
+  }
+  appendTracks(validDirectTracks);
+  input.value = '';
+  log(`Added ${validDirectTracks.length} direct YouTube ${validDirectTracks.length === 1 ? 'link' : 'links'}`, 'ok');
 }
 
 async function searchSongCatalog() {
@@ -185,7 +363,7 @@ async function searchSongCatalog() {
   renderSongSearchResults([], 'Searching music catalog…');
 
   try {
-    const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=8`);
+    const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=20`);
     if (!res.ok) {
       throw new Error(`Catalog search failed (${res.status})`);
     }
@@ -209,37 +387,7 @@ async function searchSongCatalog() {
 }
 
 function renderSongs() {
-  const list = document.getElementById('songList');
-  if (!tracks.length) {
-    list.innerHTML = '<div class="queue-empty">Search a song, paste source text, or upload a file to build the queue.</div>';
-    return;
-  }
-
-  list.innerHTML = tracks.map((track, i) => {
-    const st = songStatuses[i];
-    let cls = '', label = '';
-    if (st === 'ok') { cls = 'matched'; label = `<span class="song-status status-ok">added</span>`; }
-    else if (st === 'err') { cls = 'failed'; label = `<span class="song-status status-err">not found</span>`; }
-    else if (st === 'loading') { label = `<span class="song-status status-loading">${track.videoId ? 'adding…' : 'searching…'}</span>`; }
-    else { label = `<span class="song-status status-pending">${track.videoId ? 'direct url' : 'needs match'}</span>`; }
-    const source = track.videoId ? 'YouTube URL/video ID supplied' : 'Will resolve from artist/title';
-    const searchQuery = encodeURIComponent(track.artist ? `${track.artist} ${track.title}` : track.title);
-    const manualSearch = track.videoId
-      ? ''
-      : `<a class="song-search-link" href="https://www.youtube.com/results?search_query=${searchQuery}" target="_blank" rel="noopener noreferrer">Search YouTube</a>`;
-    return `<div class="song-item ${cls}">
-      <span class="song-num">${String(i + 1).padStart(2, '0')}</span>
-      <span class="song-copy">
-        <span class="song-name">${escapeHtml(track.display)}</span>
-        <span class="song-source">${escapeHtml(source)}</span>
-      </span>
-      <span class="song-actions">
-        ${manualSearch}
-        ${label}
-        <button class="song-remove" type="button" onclick="removeTrack(${i})" aria-label="Remove track ${i + 1}">×</button>
-      </span>
-    </div>`;
-  }).join('');
+  renderReviewPane();
 }
 
 function log(msg, type = '') {
@@ -280,12 +428,15 @@ function initAuth() {
 async function logoutAuth() {
   await fetch('/api/auth/logout', { method: 'POST' });
   accessToken = null;
+  currentProfile = null;
   playlists = [];
   document.getElementById('authBadge').className = 'auth-badge disconnected';
   document.getElementById('authLabel').textContent = 'not connected';
+  renderAccountSummary(null);
   document.getElementById('existingPlaylist').innerHTML = '<option value="">Connect your account to load playlists</option>';
   document.getElementById('playlistLoadStatus').textContent = '';
   resetExistingPlaylistPreview('Connect your account to inspect playlist songs.');
+  currentStep = 1;
   updateActionState();
   log('Disconnected Google session', 'info');
 }
@@ -295,15 +446,39 @@ async function loadAuthStatus() {
     const res = await fetch('/api/auth/status');
     const data = await res.json();
     accessToken = data.authenticated ? 'server-session' : null;
+    currentProfile = data.authenticated ? data.profile : null;
     document.getElementById('authBadge').className = data.authenticated ? 'auth-badge connected' : 'auth-badge disconnected';
     document.getElementById('authLabel').textContent = data.authenticated ? 'connected' : 'not connected';
+    renderAccountSummary(currentProfile);
     updateActionState();
     if (data.authenticated) {
       await loadPlaylists();
     }
+    updateWizardState();
   } catch (e) {
     log('Could not check backend auth status: ' + e.message, 'err');
   }
+}
+
+function renderAccountSummary(profile) {
+  const box = document.getElementById('accountSummary');
+  if (!profile) {
+    box.classList.add('hidden');
+    box.innerHTML = '';
+    return;
+  }
+
+  const avatar = profile.picture
+    ? `<img src="${escapeHtml(profile.picture)}" alt="">`
+    : '<span class="account-avatar-fallback">G</span>';
+  const verified = profile.emailVerified ? 'verified Google account' : 'Google account';
+  box.innerHTML = `<div class="account-avatar">${avatar}</div>
+    <div class="account-copy">
+      <div class="account-name">${escapeHtml(profile.name || profile.email || 'Google account')}</div>
+      <div class="account-email">${escapeHtml(profile.email || verified)}</div>
+      <div class="account-meta">${escapeHtml(verified)}</div>
+    </div>`;
+  box.classList.remove('hidden');
 }
 
 async function apiFetch(url, options = {}) {
@@ -596,9 +771,9 @@ document.getElementById('trackFile').addEventListener('change', async (event) =>
 
   try {
     const text = await file.text();
-    document.getElementById('trackInput').value = text;
-    applyTrackInput();
-    log(`Imported ${file.name}`, 'ok');
+    const parsed = parseTracks(text);
+    appendTracks(parsed);
+    log(`Added ${parsed.length} ${parsed.length === 1 ? 'track' : 'tracks'} from ${file.name}`, parsed.length ? 'ok' : 'err');
   } catch (e) {
     log(`Could not read file: ${e.message}`, 'err');
   } finally {
@@ -613,5 +788,9 @@ document.getElementById('songSearchInput').addEventListener('keydown', (event) =
   }
 });
 
+document.getElementById('playlistName').addEventListener('input', updateActionState);
+
 loadSampleTracks(false);
 loadAuthStatus();
+updateWizardState();
+setAddMethod('search');
