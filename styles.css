@@ -282,6 +282,10 @@ select option { background: #1a1a1a; }
   margin-bottom: 0.75rem;
 }
 
+.playlist-preview {
+  margin-top: 1rem;
+}
+
 #trackListLabel {
   font-size: 0.85rem;
   color: var(--muted);
@@ -323,6 +327,26 @@ select option { background: #1a1a1a; }
 .song-item:hover { border-color: var(--border-hover); }
 .song-item.matched { border-color: rgba(48,209,88,0.3); }
 .song-item.failed { border-color: rgba(255,45,85,0.3); }
+
+.static-song-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.static-song-item {
+  align-items: center;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 32px minmax(0, 1fr);
+  padding: 0.7rem 0.75rem;
+}
 
 .song-num {
   font-family: 'DM Mono', monospace;

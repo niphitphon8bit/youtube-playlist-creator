@@ -19,23 +19,14 @@
   </header>
 
   <div class="card">
-    <div class="card-title">01 — API Configuration</div>
-    <label for="apiKey">YouTube Data API Key</label>
-    <input type="password" id="apiKey" placeholder="AIza..." autocomplete="off">
+    <div class="card-title">01 — Google Connection</div>
     <div class="api-key-note">
-      Get your key at <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Google Cloud Console</a> → Enable YouTube Data API v3 → Create Credentials → API Key
-    </div>
-
-    <div class="divider"></div>
-
-    <label for="clientId">OAuth 2.0 Client ID</label>
-    <input type="text" id="clientId" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off">
-    <div class="api-key-note">
-      Same credentials page → Create OAuth 2.0 Client ID (Web application type). Add <strong>this page's URL</strong> as authorized JavaScript origin.
+      Google OAuth credentials are configured on the backend. Connect once to create a server-side session and allow refresh-token reuse.
     </div>
 
     <div class="actions">
       <button class="btn btn-outline" onclick="initAuth()">Connect Google Account</button>
+      <button class="btn btn-ghost" onclick="logoutAuth()">Disconnect</button>
       <div class="auth-badge disconnected" id="authBadge">
         <div class="dot"></div>
         <span id="authLabel">not connected</span>
@@ -67,12 +58,21 @@
 
     <div id="updatePanel" class="hidden">
       <label for="existingPlaylist">Existing playlist</label>
-      <select id="existingPlaylist" onchange="updateActionState()">
+      <select id="existingPlaylist" onchange="handlePlaylistSelectionChange()">
         <option value="">Connect your account to load playlists</option>
       </select>
       <div class="actions">
         <button class="btn btn-outline" type="button" onclick="loadPlaylists()">Refresh Playlists</button>
         <span class="inline-status" id="playlistLoadStatus"></span>
+      </div>
+      <div class="playlist-preview">
+        <div class="songs-header">
+          <span id="existingTrackLabel">Current playlist songs</span>
+          <span class="inline-status" id="existingTrackStatus"></span>
+        </div>
+        <div class="static-song-list" id="existingTrackList">
+          <div class="queue-empty">Select a playlist to inspect its current songs.</div>
+        </div>
       </div>
       <div class="api-key-note">
         New tracks will be added to the selected playlist. Existing playlist title, description, and visibility are not changed.
@@ -163,7 +163,6 @@
 
 </div>
 
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="track-parser.js"></script>
 <script src="playlist-creator.js"></script>
 </body>

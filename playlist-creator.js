@@ -10,13 +10,13 @@ const SAMPLE_TRACKS = [
 ];
 
 let accessToken = null;
-let tokenClient = null;
 let tracks = [];
 let songStatuses = [];
 let videoIds = [];
 let mode = 'create';
 let playlists = [];
 let songSearchResults = [];
+let existingPlaylistItems = [];
 const { parseTracks } = window.TrackParser;
 
 function escapeHtml(value) {
@@ -41,6 +41,13 @@ function setTracks(nextTracks) {
 
 function selectedPlaylistId() {
   return document.getElementById('existingPlaylist')?.value || '';
+}
+
+function resetExistingPlaylistPreview(message = 'Select a playlist to inspect its current songs.') {
+  existingPlaylistItems = [];
+  document.getElementById('existingTrackLabel').textContent = 'Current playlist songs';
+  document.getElementById('existingTrackStatus').textContent = '';
+  document.getElementById('existingTrackList').innerHTML = `<div class="queue-empty">${escapeHtml(message)}</div>`;
 }
 
 function updateActionState() {
@@ -267,56 +274,60 @@ function resetStatuses(clearLog = true) {
 }
 
 function initAuth() {
-  const clientId = document.getElementById('clientId').value.trim();
-  if (!clientId) { alert('Please enter your OAuth Client ID first.'); return; }
-
-  if (typeof google === 'undefined' || !google.accounts) {
-    alert('Google Identity Services not loaded yet. Please wait a moment and try again.');
-    return;
-  }
-
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: clientId,
-    scope: 'https://www.googleapis.com/auth/youtube',
-    callback: (response) => {
-      if (response.error) {
-        log('Auth failed: ' + response.error, 'err');
-        return;
-      }
-      accessToken = response.access_token;
-      document.getElementById('authBadge').className = 'auth-badge connected';
-      document.getElementById('authLabel').textContent = 'connected';
-      updateActionState();
-      log('✓ Authenticated successfully', 'ok');
-      loadPlaylists();
-    }
-  });
-
-  tokenClient.requestAccessToken({ prompt: 'consent' });
+  window.location.href = '/auth/google';
 }
 
-async function ytFetch(url, options = {}) {
-  const apiKey = document.getElementById('apiKey').value.trim();
-  const sep = url.includes('?') ? '&' : '?';
-  const res = await fetch(url + sep + 'key=' + encodeURIComponent(apiKey), {
+async function logoutAuth() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  accessToken = null;
+  playlists = [];
+  document.getElementById('authBadge').className = 'auth-badge disconnected';
+  document.getElementById('authLabel').textContent = 'not connected';
+  document.getElementById('existingPlaylist').innerHTML = '<option value="">Connect your account to load playlists</option>';
+  document.getElementById('playlistLoadStatus').textContent = '';
+  resetExistingPlaylistPreview('Connect your account to inspect playlist songs.');
+  updateActionState();
+  log('Disconnected Google session', 'info');
+}
+
+async function loadAuthStatus() {
+  try {
+    const res = await fetch('/api/auth/status');
+    const data = await res.json();
+    accessToken = data.authenticated ? 'server-session' : null;
+    document.getElementById('authBadge').className = data.authenticated ? 'auth-badge connected' : 'auth-badge disconnected';
+    document.getElementById('authLabel').textContent = data.authenticated ? 'connected' : 'not connected';
+    updateActionState();
+    if (data.authenticated) {
+      await loadPlaylists();
+    }
+  } catch (e) {
+    log('Could not check backend auth status: ' + e.message, 'err');
+  }
+}
+
+async function apiFetch(url, options = {}) {
+  const res = await fetch(url, {
     ...options,
     headers: {
-      'Authorization': 'Bearer ' + accessToken,
       'Content-Type': 'application/json',
       ...(options.headers || {})
     }
   });
   const data = await res.json();
   if (!res.ok || data.error) {
-    throw new Error(data.error?.message || `YouTube API request failed (${res.status})`);
+    const message = typeof data.error === 'string'
+      ? data.error
+      : data.error?.message;
+    throw new Error(message || `YouTube API request failed (${res.status})`);
   }
   return data;
 }
 
 async function searchVideo(track) {
   const q = encodeURIComponent(track.artist ? `${track.artist} ${track.title}` : track.title);
-  const data = await ytFetch(
-    `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${q}&type=video&maxResults=1&videoCategoryId=10`
+  const data = await apiFetch(
+    `/api/youtube/search?part=snippet&q=${q}&type=video&maxResults=1&videoCategoryId=10`
   );
   if (data.items && data.items.length > 0) {
     return data.items[0].id.videoId;
@@ -341,8 +352,8 @@ async function loadPlaylists() {
 
     do {
       const pageParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
-      const data = await ytFetch(
-        `https://www.googleapis.com/youtube/v3/playlists?part=snippet,status&mine=true&maxResults=50${pageParam}`
+      const data = await apiFetch(
+        `/api/youtube/playlists?part=snippet,status&mine=true&maxResults=50${pageParam}`
       );
       loaded.push(...(data.items || []));
       pageToken = data.nextPageToken || '';
@@ -357,6 +368,7 @@ async function loadPlaylists() {
       option.textContent = 'No playlists found';
       select.appendChild(option);
       status.textContent = '0 playlists';
+      resetExistingPlaylistPreview('No playlists available to inspect.');
     } else {
       const placeholder = document.createElement('option');
       placeholder.value = '';
@@ -371,6 +383,7 @@ async function loadPlaylists() {
       });
 
       status.textContent = `${playlists.length} loaded`;
+      resetExistingPlaylistPreview();
     }
   } catch (e) {
     select.innerHTML = '<option value="">Could not load playlists</option>';
@@ -380,6 +393,75 @@ async function loadPlaylists() {
     select.disabled = false;
     updateActionState();
   }
+}
+
+function renderExistingPlaylistItems(items) {
+  const list = document.getElementById('existingTrackList');
+  const label = document.getElementById('existingTrackLabel');
+  existingPlaylistItems = items;
+  label.textContent = items.length
+    ? `Current playlist songs (${items.length})`
+    : 'Current playlist songs';
+
+  if (!items.length) {
+    list.innerHTML = '<div class="queue-empty">This playlist does not have any readable songs yet.</div>';
+    return;
+  }
+
+  list.innerHTML = items.map((item, index) => {
+    const snippet = item.snippet || {};
+    const title = snippet.title || 'Untitled video';
+    const channel = snippet.videoOwnerChannelTitle || snippet.channelTitle || 'YouTube';
+    const videoId = snippet.resourceId?.videoId || '';
+    const suffix = videoId ? ` · ${escapeHtml(videoId)}` : '';
+    return `<div class="static-song-item">
+      <span class="song-num">${String(index + 1).padStart(2, '0')}</span>
+      <span class="song-copy">
+        <span class="song-name">${escapeHtml(title)}</span>
+        <span class="song-source">${escapeHtml(channel)}${suffix}</span>
+      </span>
+    </div>`;
+  }).join('');
+}
+
+async function loadExistingPlaylistItems(playlistId) {
+  const status = document.getElementById('existingTrackStatus');
+  const list = document.getElementById('existingTrackList');
+
+  if (!playlistId) {
+    resetExistingPlaylistPreview();
+    return;
+  }
+
+  status.textContent = 'loading…';
+  list.innerHTML = '<div class="queue-empty">Loading current playlist songs…</div>';
+
+  try {
+    const loaded = [];
+    let pageToken = '';
+
+    do {
+      const pageParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
+      const data = await apiFetch(
+        `/api/youtube/playlist-items?part=snippet&playlistId=${encodeURIComponent(playlistId)}&maxResults=50${pageParam}`
+      );
+      loaded.push(...(data.items || []));
+      pageToken = data.nextPageToken || '';
+    } while (pageToken);
+
+    renderExistingPlaylistItems(loaded);
+    status.textContent = `${loaded.length} loaded`;
+  } catch (e) {
+    existingPlaylistItems = [];
+    status.textContent = 'failed';
+    list.innerHTML = `<div class="queue-empty">${escapeHtml(e.message)}</div>`;
+    log('Failed to load playlist songs: ' + e.message, 'err');
+  }
+}
+
+async function handlePlaylistSelectionChange() {
+  updateActionState();
+  await loadExistingPlaylistItems(selectedPlaylistId());
 }
 
 async function submitPlaylist() {
@@ -406,7 +488,7 @@ async function createPlaylist() {
 
   try {
     log('Creating playlist "' + name + '"…', 'info');
-    const plData = await ytFetch('https://www.googleapis.com/youtube/v3/playlists?part=snippet,status', {
+    const plData = await apiFetch('/api/youtube/playlists', {
       method: 'POST',
       body: JSON.stringify({
         snippet: { title: name, description: desc },
@@ -473,7 +555,7 @@ async function addTracksToPlaylist(playlistId, resultOptions) {
 
       videoIds[i] = videoId;
 
-      await ytFetch('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet', {
+      await apiFetch('/api/youtube/playlist-items', {
         method: 'POST',
         body: JSON.stringify({
           snippet: {
@@ -532,3 +614,4 @@ document.getElementById('songSearchInput').addEventListener('keydown', (event) =
 });
 
 loadSampleTracks(false);
+loadAuthStatus();

@@ -18,7 +18,9 @@ The app uses the YouTube Data API v3 to:
 ├── index.html                # App markup
 ├── styles.css                # UI styling
 ├── track-parser.js           # Pure track parsing utilities
-├── playlist-creator.js       # Browser UI, auth, YouTube API calls
+├── playlist-creator.js       # Browser UI and backend API client
+├── server/                   # OAuth/session backend and YouTube proxy
+├── .env.example              # Backend environment template
 ├── tests/                    # Offline unit tests
 ├── package.json              # Test script
 └── README.md
@@ -27,21 +29,21 @@ The app uses the YouTube Data API v3 to:
 ## Requirements
 
 - A modern browser with JavaScript enabled
-- Node.js 18 or newer for running unit tests
-- npm for running the test script
+- Node.js 18 or newer for the backend and unit tests
+- npm for running scripts
 - A Google Cloud project
 - YouTube Data API v3 enabled
-- A YouTube Data API key
-- An OAuth 2.0 Client ID for a Web application
+- An OAuth 2.0 Client ID and Client Secret for a Web application
 
 ## Tech Stack
 
 - HTML
 - CSS
 - JavaScript
+- Node.js built-in HTTP server for the backend
 - Node.js built-in test runner for offline unit tests
 
-No frontend framework, bundler, or runtime server is required for the app itself. A local static server is recommended for OAuth setup.
+No frontend framework or bundler is required. The Node backend now serves the frontend, completes OAuth code exchange, persists the encrypted refresh token locally, and proxies YouTube API calls.
 
 ## Google Setup
 
@@ -50,40 +52,49 @@ No frontend framework, bundler, or runtime server is required for the app itself
 
 2. Enable **YouTube Data API v3** for your project.
 
-3. Create an **API Key**.
-
-4. Create an **OAuth 2.0 Client ID**:
+3. Create an **OAuth 2.0 Client ID**:
    - Application type: **Web application**
-   - Add this app's page URL as an authorized JavaScript origin.
+   - Add `http://localhost:8787/auth/google/callback` as an authorized redirect URI.
 
-If you open the HTML file directly, the origin may be `file://`, which is not suitable for OAuth in many setups. Prefer serving the folder locally, for example:
+4. Copy the environment template and fill it:
 
 ```bash
-python3 -m http.server 8000
+cp .env.example .env
 ```
 
-Then open:
+Set:
 
 ```text
-http://localhost:8000/
+GOOGLE_CLIENT_ID
+GOOGLE_CLIENT_SECRET
+SESSION_SECRET
+TOKEN_ENCRYPTION_KEY
 ```
 
-Add `http://localhost:8000` as an authorized JavaScript origin in your OAuth client.
+Generate a 32-byte base64 token encryption key with:
+
+```bash
+openssl rand -base64 32
+```
+
+5. Start the server. Local development automatically reads `.env`; hosted deployments should use the platform's environment-secret support.
 
 ## Usage
 
-1. Open `index.html` in a browser.
-2. Enter your YouTube Data API key.
-3. Enter your OAuth 2.0 Client ID.
-4. Click **Connect Google Account**.
-5. Choose **Create New** or **Update Existing**.
-6. For create mode, set the playlist name, description, and visibility.
-7. For update mode, select an existing playlist.
-8. Optionally use **Find songs** to search catalog suggestions and append them to the queue.
-9. Paste tracks into the source textarea or upload a text-like file.
-10. Click **Load Tracks** to build the reviewable song queue.
-11. Remove any unwanted rows from the queue if needed.
-12. Click **Create Playlist** or **Add to Playlist**.
+1. Run the backend:
+   ```bash
+   npm run dev
+   ```
+2. Open `http://localhost:8787/`.
+3. Click **Connect Google Account**.
+4. Choose **Create New** or **Update Existing**.
+5. For create mode, set the playlist name, description, and visibility.
+6. For update mode, select an existing playlist.
+7. Optionally use **Find songs** to search catalog suggestions and append them to the queue.
+8. Paste tracks into the source textarea or upload a text-like file.
+9. Click **Load Tracks** to build the reviewable song queue.
+10. Remove any unwanted rows from the queue if needed.
+11. Click **Create Playlist** or **Add to Playlist**.
 
 ## Song Finder
 
@@ -117,6 +128,7 @@ The workflow runs:
 npm test
 node --check playlist-creator.js
 node --check track-parser.js
+node --check server/oauth-server.mjs
 node --check tests/track-parser.test.js
 ```
 
@@ -221,7 +233,6 @@ Contains the app layout and loads:
 
 - Google fonts
 - `styles.css`
-- Google Identity Services
 - `track-parser.js`
 - `playlist-creator.js`
 
@@ -236,8 +247,8 @@ Contains:
 - Sample track data
 - File upload handling
 - Music catalog suggestion search
-- Google OAuth token setup
-- YouTube API request helper
+- Backend session connection
+- Backend YouTube API request helper
 - Video search
 - Playlist creation
 - Existing playlist loading
@@ -258,8 +269,18 @@ Contains pure parsing utilities used by both the browser app and Node tests:
 
 Contains offline unit tests for parser behavior. Run with `npm test`.
 
+### `server/oauth-server.mjs`
+
+Contains the no-dependency backend scaffold:
+
+- Google OAuth authorization-code flow with offline access
+- Signed HTTP-only session cookie
+- Encrypted refresh-token file store under `.data/`
+- Static frontend serving
+- YouTube API proxy endpoints used by the browser
+
 ## Notes
 
-- API keys and OAuth client IDs are entered in the browser and are not saved by this app.
-- Do not commit real API keys or OAuth secrets.
-- This is a browser-only tool. It does not require a backend server.
+- Do not commit `.env`, `.data/`, OAuth client secrets, session secrets, encryption keys, or refresh tokens.
+- The included encrypted file token store is suitable for local/dev branch work. Replace it with a durable database-backed store before a real multi-user production deployment.
+- Refresh tokens are requested through Google's web-server OAuth flow with offline access, not stored in the browser.

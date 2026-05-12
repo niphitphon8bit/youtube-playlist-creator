@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "dev": "node server/oauth-server.mjs",
     "test": "node --test tests"
   }
 }

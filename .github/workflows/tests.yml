@@ -26,4 +26,5 @@ jobs:
         run: |
           node --check playlist-creator.js
           node --check track-parser.js
+          node --check server/oauth-server.mjs
           node --check tests/track-parser.test.js
