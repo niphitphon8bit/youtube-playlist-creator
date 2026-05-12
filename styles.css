@@ -276,6 +276,10 @@ select option { background: #1a1a1a; }
   min-height: 0;
 }
 
+.method-panel.hidden {
+  display: none;
+}
+
 .track-workspace {
   display: grid;
   gap: 1rem;
@@ -587,6 +591,20 @@ select option { background: #1a1a1a; }
   overflow-wrap: anywhere;
 }
 
+.song-link-editor {
+  align-items: center;
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  margin-top: 0.4rem;
+}
+
+.song-link-input {
+  font-size: 0.72rem;
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+}
+
 .song-actions {
   align-items: center;
   display: inline-flex;
@@ -889,5 +907,8 @@ select option { background: #1a1a1a; }
   .queue-summary { flex-direction: column; }
   .song-item { grid-template-columns: 28px minmax(0, 1fr); }
   .song-actions { grid-column: 1 / -1; justify-content: space-between; }
+  .song-link-editor {
+    grid-template-columns: 1fr;
+  }
   .btn { justify-content: center; }
 }

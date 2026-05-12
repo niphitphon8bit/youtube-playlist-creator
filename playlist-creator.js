@@ -301,6 +301,16 @@ function renderQueueRow(track, i) {
     <span class="song-copy">
       <span class="song-name">${escapeHtml(track.display)}</span>
       <span class="song-source">${escapeHtml(source)}</span>
+      <span class="song-link-editor">
+        <input
+          class="song-link-input"
+          id="rowVideoInput${i}"
+          type="text"
+          placeholder="Paste YouTube URL or video ID"
+          value="${escapeHtml(track.videoId || '')}">
+        <button class="btn btn-outline btn-compact" type="button" onclick="applyTrackVideoLink(${i})">Link</button>
+        ${track.videoId ? `<button class="btn btn-ghost" type="button" onclick="clearTrackVideoLink(${i})">Clear</button>` : ''}
+      </span>
     </span>
     <span class="song-actions">
       ${manualSearch}
@@ -308,6 +318,31 @@ function renderQueueRow(track, i) {
       <button class="song-remove" type="button" onclick="removeTrack(${i})" aria-label="Remove track ${i + 1}">×</button>
     </span>
   </div>`;
+}
+
+function applyTrackVideoLink(index) {
+  const input = document.getElementById(`rowVideoInput${index}`);
+  const parsed = parseTracks(input.value);
+  const linkedTrack = parsed.find((track) => track.videoId);
+  if (!linkedTrack?.videoId) {
+    log('Enter a valid YouTube URL or 11-character video ID for this row.', 'err');
+    return;
+  }
+  tracks[index] = { ...tracks[index], videoId: linkedTrack.videoId };
+  songStatuses[index] = 'pending';
+  videoIds[index] = null;
+  renderReviewPane();
+  updateActionState();
+  log(`Linked direct YouTube video for ${tracks[index].display}`, 'ok');
+}
+
+function clearTrackVideoLink(index) {
+  tracks[index] = { ...tracks[index], videoId: '' };
+  songStatuses[index] = 'pending';
+  videoIds[index] = null;
+  renderReviewPane();
+  updateActionState();
+  log(`Cleared direct YouTube link for ${tracks[index].display}`, 'info');
 }
 
 function renderReviewPane() {
